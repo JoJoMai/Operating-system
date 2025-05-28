@@ -86,6 +86,13 @@ void yield(void) {
     if (next == current_proc)
         return;
 
+    // Set the kernel stack pointer for the next process in sscratch
+    __asm__ __volatile__(
+        "csrw sscratch, %[sscratch]\n"
+        :
+        : [sscratch] "r" ((uint32_t) &next->stack[sizeof(next->stack)])
+    );
+
     // Context switch
     struct process *prev = current_proc;
     current_proc = next;
