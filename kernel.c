@@ -3,6 +3,8 @@
 
 extern char __bss[], __bss_end[], __stack_top[];
 extern char __free_ram[], __free_ram_end[];
+extern char _binary_shell_bin_start[];
+extern char _binary_shell_bin_size[];
 
 // Function declarations
 void switch_context(uint32_t *prev_sp, uint32_t *next_sp);
@@ -322,8 +324,15 @@ void kernel_main(void) {
 
     WRITE_CSR(stvec, (uint32_t) kernel_entry);
 
+    // Print embedded shell binary info
+    uint8_t *shell_bin = (uint8_t *) _binary_shell_bin_start;
+    size_t shell_size = (size_t) _binary_shell_bin_size;
+    printf("shell_bin size = %d\n", shell_size);
+    printf("shell_bin[0] = 0x%x\n", shell_bin[0]);
+
+    // Process setup
     idle_proc = create_process((uint32_t) NULL);
-    idle_proc->pid = 0; // idle
+    idle_proc->pid = 0;
     current_proc = idle_proc;
 
     proc_a = create_process((uint32_t) proc_a_entry);
