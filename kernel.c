@@ -3,13 +3,11 @@
 
 extern char __bss[], __bss_end[], __stack_top[];
 extern char __free_ram[], __free_ram_end[];
-extern char _binary_shell_bin_start[];
-extern char _binary_shell_bin_size[];
+extern char _binary_shell_bin_start[], _binary_shell_bin_size[];
 
 // Function declarations
 void switch_context(uint32_t *prev_sp, uint32_t *next_sp);
-void proc_a_entry(void);
-void proc_b_entry(void);
+void user_entry(void);
 paddr_t alloc_pages(uint32_t n);
 void map_page(uint32_t *table1, uint32_t vaddr, paddr_t paddr, uint32_t flags);
 
@@ -36,7 +34,11 @@ struct process procs[PROCS_MAX]; // All process control structures.
 
 extern char __kernel_base[];
 
-struct process *create_process(uint32_t pc) {
+void user_entry(void) {
+    PANIC("not yet implemented");
+}
+
+struct process *create_process(const void *image, size_t image_size) {
     // Find an unused process control structure.
     struct process *proc = NULL;
     int i;
@@ -65,13 +67,30 @@ struct process *create_process(uint32_t pc) {
     *--sp = 0;                      // s2
     *--sp = 0;                      // s1
     *--sp = 0;                      // s0
-    *--sp = (uint32_t) pc;          // ra
+    *--sp = (uint32_t) user_entry;  // ra (changed!)
 
     // Map kernel pages.
     uint32_t *page_table = (uint32_t *) alloc_pages(1);
     for (paddr_t paddr = (paddr_t) __kernel_base;
          paddr < (paddr_t) __free_ram_end; paddr += PAGE_SIZE)
         map_page(page_table, paddr, paddr, PAGE_R | PAGE_W | PAGE_X);
+
+    // Map user pages.
+    if (image != NULL && image_size > 0) {
+        for (uint32_t off = 0; off < image_size; off += PAGE_SIZE) {
+            paddr_t page = alloc_pages(1);
+
+            // Handle the case where the data to be copied is smaller than the
+            // page size.
+            size_t remaining = image_size - off;
+            size_t copy_size = PAGE_SIZE <= remaining ? PAGE_SIZE : remaining;
+
+            // Fill and map the page.
+            memcpy((void *) page, image + off, copy_size);
+            map_page(page_table, USER_BASE + off, page,
+                     PAGE_U | PAGE_R | PAGE_W | PAGE_X);
+        }
+    }
 
     // Initialize fields.
     proc->pid = i + 1;
@@ -278,25 +297,6 @@ void delay(void) {
         __asm__ __volatile__("nop"); // do nothing
 }
 
-struct process *proc_a;
-struct process *proc_b;
-
-void proc_a_entry(void) {
-    printf("starting process A\n");
-    while (1) {
-        putchar('A');
-        yield();
-    }
-}
-
-void proc_b_entry(void) {
-    printf("starting process B\n");
-    while (1) {
-        putchar('B');
-        yield();
-    }
-}
-
 void map_page(uint32_t *table1, uint32_t vaddr, paddr_t paddr, uint32_t flags) {
     if (!is_aligned(vaddr, PAGE_SIZE))
         PANIC("unaligned vaddr %x", vaddr);
@@ -331,12 +331,12 @@ void kernel_main(void) {
     printf("shell_bin[0] = 0x%x\n", shell_bin[0]);
 
     // Process setup
-    idle_proc = create_process((uint32_t) NULL);
-    idle_proc->pid = 0;
+    idle_proc = create_process(NULL, 0); // updated!
+    idle_proc->pid = 0; // idle
     current_proc = idle_proc;
 
-    proc_a = create_process((uint32_t) proc_a_entry);
-    proc_b = create_process((uint32_t) proc_b_entry);
+    // new!
+    create_process(_binary_shell_bin_start, (size_t) _binary_shell_bin_size);
 
     yield();
     PANIC("switched to idle process");
