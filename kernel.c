@@ -4,6 +4,9 @@
 extern char __bss[], __bss_end[], __stack_top[];
 extern char __free_ram[], __free_ram_end[];
 
+extern char _binary_shell_bin_start[];
+extern char _binary_shell_bin_end[];
+
 // Function declarations
 void switch_context(uint32_t *prev_sp, uint32_t *next_sp);
 void proc_a_entry(void);
@@ -319,6 +322,10 @@ void kernel_main(void) {
     memset(__bss, 0, (size_t) __bss_end - (size_t) __bss);
 
     printf("\n\n");
+
+    uint8_t *shell_bin = (uint8_t *) _binary_shell_bin_start;
+    printf("shell_bin size = %d\n", (int) _binary_shell_bin_size);
+    printf("shell_bin[0] = %x (%d bytes)\n", shell_bin[0], _binary_shell_bin_size);
 
     WRITE_CSR(stvec, (uint32_t) kernel_entry);
 
